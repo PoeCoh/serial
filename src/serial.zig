@@ -10,22 +10,15 @@ pub usingnamespace switch (native_os) {
     else => @import("linux/serial.zig"), // just assume everything else is linux and let it error out if it's not compatible
 };
 
-pub fn list() !PortIterator {
-    return try PortIterator.init();
+pub fn iterator() !serial.Iterator {
+    return serial.Iterator.init();
 }
 
 pub fn infoIterator() !serial.InformationIterator {
     return serial.InformationIterator.init();
 }
 
-pub const PortIterator = switch (builtin.os.tag) {
-    .windows => WindowsPortIterator,
-    .linux => LinuxPortIterator,
-    .macos => DarwinPortIterator,
-    else => @compileError("OS is not supported for port iteration"),
-};
-
-pub const SerialPortDescription = struct {
+pub const Description = struct {
     file_name: []const u8,
     display_name: []const u8,
     driver: ?[]const u8,
@@ -43,198 +36,6 @@ pub const Information = struct {
     hw_id: []const u8,
     vid: u16,
     pid: u16,
-};
-
-const HKEY = std.os.windows.HKEY;
-const HWND = std.os.windows.HANDLE;
-const HDEVINFO = std.os.windows.HANDLE;
-const DEVINST = std.os.windows.DWORD;
-
-const WindowsPortIterator = struct {
-    const Self = @This();
-
-    key: HKEY,
-    index: u32,
-
-    name: [256:0]u8 = undefined,
-    name_size: u32 = 256,
-
-    data: [256]u8 = undefined,
-    filepath_data: [256]u8 = undefined,
-    data_size: u32 = 256,
-
-    pub fn init() !Self {
-        const HKEY_LOCAL_MACHINE = @as(HKEY, @ptrFromInt(0x80000002));
-        const KEY_READ = 0x20019;
-
-        var self: Self = undefined;
-        self.index = 0;
-        if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "HARDWARE\\DEVICEMAP\\SERIALCOMM\\", 0, KEY_READ, &self.key) != 0)
-            return error.WindowsError;
-
-        return self;
-    }
-
-    pub fn deinit(self: *Self) void {
-        _ = RegCloseKey(self.key);
-        self.* = undefined;
-    }
-
-    pub fn next(self: *Self) !?SerialPortDescription {
-        defer self.index += 1;
-
-        self.name_size = 256;
-        self.data_size = 256;
-
-        return switch (RegEnumValueA(self.key, self.index, &self.name, &self.name_size, null, null, &self.data, &self.data_size)) {
-            0 => SerialPortDescription{
-                .file_name = try std.fmt.bufPrint(&self.filepath_data, "\\\\.\\{s}", .{self.data[0 .. self.data_size - 1]}),
-                .display_name = self.data[0 .. self.data_size - 1],
-                .driver = self.name[0..self.name_size],
-            },
-            259 => null,
-            else => error.WindowsError,
-        };
-    }
-};
-
-extern "advapi32" fn RegOpenKeyExA(
-    key: HKEY,
-    lpSubKey: std.os.windows.LPCSTR,
-    ulOptions: std.os.windows.DWORD,
-    samDesired: std.os.windows.REGSAM,
-    phkResult: *HKEY,
-) callconv(std.os.windows.WINAPI) std.os.windows.LSTATUS;
-extern "advapi32" fn RegCloseKey(key: HKEY) callconv(std.os.windows.WINAPI) std.os.windows.LSTATUS;
-extern "advapi32" fn RegEnumValueA(
-    hKey: HKEY,
-    dwIndex: std.os.windows.DWORD,
-    lpValueName: std.os.windows.LPSTR,
-    lpcchValueName: *std.os.windows.DWORD,
-    lpReserved: ?*std.os.windows.DWORD,
-    lpType: ?*std.os.windows.DWORD,
-    lpData: [*]std.os.windows.BYTE,
-    lpcbData: *std.os.windows.DWORD,
-) callconv(std.os.windows.WINAPI) std.os.windows.LSTATUS;
-
-
-const LinuxPortIterator = struct {
-    const Self = @This();
-
-    const root_dir = "/sys/class/tty";
-
-    // ls -hal /sys/class/tty/*/device/driver
-
-    dir: std.fs.Dir,
-    iterator: std.fs.Dir.Iterator,
-
-    full_path_buffer: [std.fs.max_path_bytes]u8 = undefined,
-    driver_path_buffer: [std.fs.max_path_bytes]u8 = undefined,
-
-    pub fn init() !Self {
-        var dir = try std.fs.cwd().openDir(root_dir, .{ .iterate = true });
-        errdefer dir.close();
-
-        return Self{
-            .dir = dir,
-            .iterator = dir.iterate(),
-        };
-    }
-
-    pub fn deinit(self: *Self) void {
-        self.dir.close();
-        self.* = undefined;
-    }
-
-    pub fn next(self: *Self) !?SerialPortDescription {
-        while (true) {
-            if (try self.iterator.next()) |entry| {
-                // not a dir => we don't care
-                var tty_dir = self.dir.openDir(entry.name, .{}) catch continue;
-                defer tty_dir.close();
-
-                // we need the device dir
-                // no device dir =>  virtual device
-                var device_dir = tty_dir.openDir("device", .{}) catch continue;
-                defer device_dir.close();
-
-                // We need the symlink for "driver"
-                const link = device_dir.readLink("driver", &self.driver_path_buffer) catch continue;
-
-                // full_path_buffer
-                // driver_path_buffer
-
-                var fba = std.heap.FixedBufferAllocator.init(&self.full_path_buffer);
-
-                const path = try std.fs.path.join(fba.allocator(), &.{
-                    "/dev/",
-                    entry.name,
-                });
-
-                return SerialPortDescription{
-                    .file_name = path,
-                    .display_name = path,
-                    .driver = std.fs.path.basename(link),
-                };
-            } else {
-                return null;
-            }
-        }
-        return null;
-    }
-};
-
-const DarwinPortIterator = struct {
-    const Self = @This();
-
-    const root_dir = "/dev/";
-
-    dir: std.fs.IterableDir,
-    iterator: std.fs.IterableDir.Iterator,
-
-    full_path_buffer: [std.fs.max_path_bytes]u8 = undefined,
-    driver_path_buffer: [std.fs.max_path_bytes]u8 = undefined,
-
-    pub fn init() !Self {
-        var dir = try std.fs.cwd().openIterableDir(root_dir, .{});
-        errdefer dir.close();
-
-        return Self{
-            .dir = dir,
-            .iterator = dir.iterate(),
-        };
-    }
-
-    pub fn deinit(self: *Self) void {
-        self.dir.close();
-        self.* = undefined;
-    }
-
-    pub fn next(self: *Self) !?SerialPortDescription {
-        while (true) {
-            if (try self.iterator.next()) |entry| {
-                if (!std.mem.startsWith(u8, entry.name, "cu.")) {
-                    continue;
-                } else {
-                    var fba = std.heap.FixedBufferAllocator.init(&self.full_path_buffer);
-
-                    const path = try std.fs.path.join(fba.allocator(), &.{
-                        "/dev/",
-                        entry.name,
-                    });
-
-                    return SerialPortDescription{
-                        .file_name = path,
-                        .display_name = path,
-                        .driver = "darwin",
-                    };
-                }
-            } else {
-                return null;
-            }
-        }
-        return null;
-    }
 };
 
 pub const Parity = enum {
@@ -582,7 +383,7 @@ extern "kernel32" fn GetCommState(hFile: std.os.windows.HANDLE, lpDCB: *DCB) cal
 extern "kernel32" fn SetCommState(hFile: std.os.windows.HANDLE, lpDCB: *DCB) callconv(std.os.windows.WINAPI) std.os.windows.BOOL;
 
 test "iterate ports" {
-    var it = try list();
+    var it = try iterator();
     while (try it.next()) |port| {
         _ = port;
         // std.debug.print("{s} (file: {s}, driver: {s})\n", .{ port.display_name, port.file_name, port.driver });

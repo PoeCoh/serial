@@ -3,3 +3,5 @@ pub const InformationIterator = struct {
         @panic("Struct not implemented");
     }
 };
+
+pub const Iterator = @import("Iterator.zig");

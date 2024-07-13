@@ -15,7 +15,7 @@ pub fn main() !u8 {
 
     try zig_serial.configureSerialPort(serial, zig_serial.SerialConfig{
         .baud_rate = 115200,
-        .word_size = .eight,
+        .word_size = .CS8,
         .parity = .none,
         .stop_bits = .one,
         .handshake = .none,

@@ -51,15 +51,14 @@ pub fn next(self: *Self) !?Description {
                 .display_name = path,
                 .driver = std.fs.path.basename(link),
             };
-        } else {
-            return null;
         }
+        return null;
     }
     return null;
 }
 
 const Self = @This();
 const std = @import("std");
-const Description = @import("serial").Description;
+const Description = @import("SerialPort").Description;
 const root_dir = "/sys/class/tty";
 

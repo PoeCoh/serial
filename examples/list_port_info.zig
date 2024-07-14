@@ -1,8 +1,8 @@
 const std = @import("std");
-const zig_serial = @import("serial");
+const SerialPort = @import("SerialPort");
 
 pub fn main() !u8 {
-    var iterator = try zig_serial.infoIterator();
+    var iterator = try SerialPort.infoIterator();
     defer iterator.deinit();
 
     while (try iterator.next()) |info| {

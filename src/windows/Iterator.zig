@@ -44,7 +44,7 @@ pub fn next(self: *Self) !?Description {
 
 const Self = @This();
 const std = @import("std");
-const Description = @import("serial").Description;
+const Description = @import("SerialPort").Description;
 const HKEY = std.os.windows.HKEY;
 
 extern "advapi32" fn RegOpenKeyExA(

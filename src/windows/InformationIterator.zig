@@ -183,10 +183,8 @@ fn deviceRegistryProperty(device_info_set: *const HDEVINFO, device_info_data: *S
 }
 
 fn getParentSerialNumber(devinst: DEVINST, devid: []const u8, serial_number: [*]u8) !std.os.windows.DWORD {
-    if (std.mem.startsWith(u8, devid, "FTDI")) {
-        // Should not be called on "FTDI" so just return the serial number.
-        return try parseSerialNumber(devid, serial_number);
-    } else if (std.mem.startsWith(u8, devid, "USB")) {
+    if (isFTDI(devid)) return parseSerialNumber(devid, serial_number);
+    if (isUSB(devid)) {
         // taken from pyserial
         const max_usb_device_tree_traversal_depth = 5;
         const start_vidpid = std.mem.indexOf(u8, devid, "VID") orelse return error.WindowsError;
@@ -209,89 +207,63 @@ fn getParentSerialNumber(devinst: DEVINST, devid: []const u8, serial_number: [*]
             if (length > 0) return length;
         }
     }
-
     return error.WindowsError;
 }
 
 fn parseSerialNumber(devid: []const u8, serial_number: [*]u8) !std.os.windows.DWORD {
-    var delimiter: ?[]const u8 = undefined;
+    const delimiter = getDelimiter(devid) orelse return error.WindowsError;
+    var it = std.mem.tokenize(u8, devid, delimiter);
 
-    if (std.mem.startsWith(u8, devid, "USB")) {
-        delimiter = "\\&";
-    } else if (std.mem.startsWith(u8, devid, "FTDI")) {
-        delimiter = "\\+";
-    } else {
-        // What to do here?
-        delimiter = null;
+    // throw away the start
+    _ = it.next();
+    while (it.next()) |segment| {
+        if (std.mem.startsWith(u8, segment, "VID_")) continue;
+        if (std.mem.startsWith(u8, segment, "PID_")) continue;
+
+        // If "MI_{d}{d}", this is an interface number. The serial number will have to be
+        // sourced from the parent node. Probably do not have to check all these conditions.
+        if (segment.len == 5 and std.mem.eql(u8, "MI_", segment[0..3]) and std.ascii.isDigit(segment[3]) and std.ascii.isDigit(segment[4])) return 0;
+
+        @memcpy(serial_number, segment);
+        return @as(std.os.windows.DWORD, @truncate(segment.len));
     }
-
-    if (delimiter) |del| {
-        var it = std.mem.tokenize(u8, devid, del);
-
-        // throw away the start
-        _ = it.next();
-        while (it.next()) |segment| {
-            if (std.mem.startsWith(u8, segment, "VID_")) continue;
-            if (std.mem.startsWith(u8, segment, "PID_")) continue;
-
-            // If "MI_{d}{d}", this is an interface number. The serial number will have to be
-            // sourced from the parent node. Probably do not have to check all these conditions.
-            if (segment.len == 5 and std.mem.eql(u8, "MI_", segment[0..3]) and std.ascii.isDigit(segment[3]) and std.ascii.isDigit(segment[4])) return 0;
-
-            @memcpy(serial_number, segment);
-            return @as(std.os.windows.DWORD, @truncate(segment.len));
-        }
-    }
-
     return error.WindowsError;
 }
 
 fn parseVendorId(devid: []const u8) !u16 {
-    var delimiter: ?[]const u8 = undefined;
-
-    if (std.mem.startsWith(u8, devid, "USB")) {
-        delimiter = "\\&";
-    } else if (std.mem.startsWith(u8, devid, "FTDI")) {
-        delimiter = "\\+";
-    } else {
-        delimiter = null;
-    }
-
-    if (delimiter) |del| {
-        var it = std.mem.tokenize(u8, devid, del);
-
-        while (it.next()) |segment| {
-            if (std.mem.startsWith(u8, segment, "VID_")) {
-                return try std.fmt.parseInt(u16, segment[4..], 16);
-            }
+    const delimiter = getDelimiter(devid) orelse return error.WindowsError;
+    var it = std.mem.tokenize(u8, devid, delimiter);
+    while (it.next()) |segment| {
+        if (std.mem.startsWith(u8, segment, "VID_")) {
+            return try std.fmt.parseInt(u16, segment[4..], 16);
         }
     }
-
     return error.WindowsError;
 }
 
 fn parseProductId(devid: []const u8) !u16 {
-    var delimiter: ?[]const u8 = undefined;
-
-    if (std.mem.startsWith(u8, devid, "USB")) {
-        delimiter = "\\&";
-    } else if (std.mem.startsWith(u8, devid, "FTDI")) {
-        delimiter = "\\+";
-    } else {
-        delimiter = null;
-    }
-
-    if (delimiter) |del| {
-        var it = std.mem.tokenize(u8, devid, del);
-
-        while (it.next()) |segment| {
-            if (std.mem.startsWith(u8, segment, "PID_")) {
-                return try std.fmt.parseInt(u16, segment[4..], 16);
-            }
+    const delimiter = getDelimiter(devid) orelse return error.WindowsError;
+    var it = std.mem.tokenize(u8, devid, delimiter);
+    while (it.next()) |segment| {
+        if (std.mem.startsWith(u8, segment, "PID_")) {
+            return try std.fmt.parseInt(u16, segment[4..], 16);
         }
     }
-
     return error.WindowsError;
+}
+
+fn isUSB(devid: []const u8) bool {
+    return std.mem.startsWith(u8, devid, "USB");
+}
+
+fn isFTDI(devid: []const u8) bool {
+    return std.mem.startsWith(u8, devid, "FTDI");
+}
+
+fn getDelimiter(devid: []const u8) ?[]const u8 {
+    if (isUSB(devid)) return "\\&";
+    if (isFTDI(devid)) return "\\+";
+    return null;
 }
 
 extern "setupapi" fn SetupDiGetClassDevsW(

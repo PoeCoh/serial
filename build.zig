@@ -11,8 +11,8 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
-    const serial_mod = b.addModule("serial", .{
-        .root_source_file = b.path("src/serial.zig"),
+    const SerialPort = b.addModule("SerialPort", .{
+        .root_source_file = b.path("src/SerialPort.zig"),
     });
 
     const unit_tests = b.addTest(.{
@@ -45,7 +45,7 @@ pub fn build(b: *std.Build) void {
                 continue;
             }
 
-            example.root_module.addImport("serial", serial_mod);
+            example.root_module.addImport("SerialPort", SerialPort);
             const install_example = b.addInstallArtifact(example, .{});
             example_step.dependOn(&example.step);
             example_step.dependOn(&install_example.step);

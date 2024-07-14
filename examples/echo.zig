@@ -1,32 +1,21 @@
 const std = @import("std");
-const zig_serial = @import("serial");
+const SerialPort = @import("SerialPort");
 
-pub fn main() !u8 {
-    const port_name = if (@import("builtin").os.tag == .windows) "\\\\.\\COM1" else "/dev/ttyUSB0";
+pub fn main() !u2 {
+    // const port_name = if (@import("builtin").os.tag == .windows) "\\\\.\\COM1" else "/dev/ttyUSB0";
 
-    var serial = std.fs.cwd().openFile(port_name, .{ .mode = .read_write }) catch |err| switch (err) {
-        error.FileNotFound => {
-            std.debug.print("Invalid config: the serial port '{s}' does not exist.\n", .{port_name});
-            return 1;
-        },
-        else => return err,
-    };
-    defer serial.close();
-
-    try zig_serial.configureSerialPort(serial, zig_serial.SerialConfig{
+    var sp = SerialPort.init("COM3", .{
         .baud_rate = 115200,
         .word_size = .CS8,
         .parity = .none,
         .stop_bits = .one,
         .handshake = .none,
     });
-
-    try serial.writer().writeAll("Hello, World!\r\n");
-
-    while (true) {
-        const b = try serial.reader().readByte();
-        try serial.writer().writeByte(b);
-    }
+    try sp.open();
+    defer sp.close();
+    try sp.write("Hello, World!\r\n");
+    var buffer: [100]u8 = undefined;
+    try sp.read(&buffer);
 
     return 0;
 }

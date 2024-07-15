@@ -701,7 +701,7 @@ pub fn configureSerialPort(port: std.fs.File, config: SerialConfig) !void {
             if (SetCommTimeouts(port.handle, &timeout) == 0)
                 return error.WindowsError;
         },
-        .linux, .macos => |tag| {
+        else => {
             var settings = try std.posix.tcgetattr(port.handle);
 
             settings.iflag = .{};
@@ -749,16 +749,12 @@ pub fn configureSerialPort(port: std.fs.File, config: SerialConfig) !void {
                 .eight => settings.cflag.CSIZE = .CS8,
             }
 
-            const baudmask = switch (tag) {
-                .macos => try mapBaudToMacOSEnum(config.baud_rate),
-                .linux => try mapBaudToLinuxEnum(config.baud_rate),
-                else => unreachable,
-            };
+            const baud: std.posix.speed_t = @enumFromInt(config.baud_rate);
 
             // settings.cflag &= ~@as(os.tcflag_t, CBAUD);
             // settings.cflag |= baudmask;
-            settings.ispeed = baudmask;
-            settings.ospeed = baudmask;
+            settings.ispeed = baud;
+            settings.ospeed = baud;
 
             settings.cc[VMIN] = 1;
             settings.cc[VSTOP] = 0x13; // XOFF
@@ -767,7 +763,6 @@ pub fn configureSerialPort(port: std.fs.File, config: SerialConfig) !void {
 
             try std.posix.tcsetattr(port.handle, .NOW, settings);
         },
-        else => @compileError("unsupported OS, please implement!"),
     }
 }
 
@@ -899,73 +894,6 @@ fn tcflush(fd: std.os.linux.fd_t, mode: usize) !void {
         },
         else => @compileError("unsupported OS, please implement!"),
     }
-}
-
-fn mapBaudToLinuxEnum(baudrate: usize) !std.os.linux.speed_t {
-    return switch (baudrate) {
-        // from termios.h
-        50 => .B50,
-        75 => .B75,
-        110 => .B110,
-        134 => .B134,
-        150 => .B150,
-        200 => .B200,
-        300 => .B300,
-        600 => .B600,
-        1200 => .B1200,
-        1800 => .B1800,
-        2400 => .B2400,
-        4800 => .B4800,
-        9600 => .B9600,
-        19200 => .B19200,
-        38400 => .B38400,
-        // from termios-baud.h
-        57600 => .B57600,
-        115200 => .B115200,
-        230400 => .B230400,
-        460800 => .B460800,
-        500000 => .B500000,
-        576000 => .B576000,
-        921600 => .B921600,
-        1000000 => .B1000000,
-        1152000 => .B1152000,
-        1500000 => .B1500000,
-        2000000 => .B2000000,
-        2500000 => .B2500000,
-        3000000 => .B3000000,
-        3500000 => .B3500000,
-        4000000 => .B4000000,
-        else => error.UnsupportedBaudRate,
-    };
-}
-
-fn mapBaudToMacOSEnum(baudrate: usize) !std.os.darwin.speed_t {
-    return switch (baudrate) {
-        // from termios.h
-        50 => .B50,
-        75 => .B75,
-        110 => .B110,
-        134 => .B134,
-        150 => .B150,
-        200 => .B200,
-        300 => .B300,
-        600 => .B600,
-        1200 => .B1200,
-        1800 => .B1800,
-        2400 => .B2400,
-        4800 => .B4800,
-        9600 => .B9600,
-        19200 => .B19200,
-        38400 => .B38400,
-        7200 => .B7200,
-        14400 => .B14400,
-        28800 => .B28800,
-        57600 => .B57600,
-        76800 => .B76800,
-        115200 => .B115200,
-        230400 => .B230400,
-        else => error.UnsupportedBaudRate,
-    };
 }
 
 const DCBFlags = packed struct(u32) {

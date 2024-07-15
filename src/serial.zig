@@ -7,6 +7,8 @@ pub const Config = struct {
     stop_bits: StopBits = .one,
     word_size: WordSize = .CS8,
     handshake: Handshake = .none,
+    /// Timeout in milliseconds. Only used on windows.
+    timeout: u32 = 0,
 };
 
 pub const Parity = enum {

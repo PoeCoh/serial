@@ -2,6 +2,13 @@ const std = @import("std");
 const serial = @import("../serial.zig");
 pub const Iterator = @import("Iterator.zig");
 pub const InformationIterator = @import("InformationIterator.zig");
+const MAXDWORD = std.math.maxInt(std.os.windows.DWORD);
+const DWORD = std.os.windows.DWORD;
+const BOOL = std.os.windows.BOOL;
+const HANDLE = std.os.windows.HANDLE;
+const WORD = std.os.windows.WORD;
+const BYTE = std.os.windows.BYTE;
+const WINAPI = std.os.windows.WINAPI;
 
 pub const Buffers = enum(u8) {
     input = 0x0008,
@@ -14,10 +21,7 @@ pub fn pFlush(file: *std.fs.File, buffer: u8) !void {
     if (result == 0) return error.FlushError;
 }
 
-extern "kernel32" fn PurgeComm(
-    hFile: std.os.windows.HANDLE,
-    dwFlags: std.os.windows.DWORD,
-) callconv(std.os.windows.WINAPI) std.os.windows.BOOL;
+extern "kernel32" fn PurgeComm(hFile: HANDLE, dwFlags: DWORD) callconv(WINAPI) BOOL;
 
 pub fn pControlPins(file: *std.fs.File, pins: serial.ControlPins) !void {
     const CLRDTR = 6;
@@ -34,7 +38,7 @@ pub fn pControlPins(file: *std.fs.File, pins: serial.ControlPins) !void {
     }
 }
 
-extern "kernel32" fn EscapeCommFunction(hFile: std.os.windows.HANDLE, dwFunc: std.os.windows.DWORD) callconv(std.os.windows.WINAPI) std.os.windows.BOOL;
+extern "kernel32" fn EscapeCommFunction(hFile: HANDLE, dwFunc: DWORD) callconv(WINAPI) BOOL;
 
 pub fn configure(file: *std.fs.File, config: serial.Config) !void {
     var dcb = std.mem.zeroes(DCB);
@@ -74,6 +78,9 @@ pub fn configure(file: *std.fs.File, config: serial.Config) !void {
 
     if (SetCommState(file.handle, &dcb) == 0)
         return error.WindowsError;
+    const timeout = COMMTIMEOUTS.init(config.timeout);
+    if (SetCommTimeouts(file.handle, &timeout) == 0)
+        return error.WindowsError;
 }
 
 const DCBFlags = packed struct(u32) {
@@ -97,22 +104,42 @@ const DCBFlags = packed struct(u32) {
 ///
 /// Details: https://learn.microsoft.com/es-es/windows/win32/api/winbase/ns-winbase-dcb
 const DCB = extern struct {
-    DCBlength: std.os.windows.DWORD,
-    BaudRate: std.os.windows.DWORD,
+    DCBlength: DWORD,
+    BaudRate: DWORD,
     flags: u32,
-    wReserved: std.os.windows.WORD,
-    XonLim: std.os.windows.WORD,
-    XoffLim: std.os.windows.WORD,
-    ByteSize: std.os.windows.BYTE,
-    Parity: std.os.windows.BYTE,
-    StopBits: std.os.windows.BYTE,
+    wReserved: WORD,
+    XonLim: WORD,
+    XoffLim: WORD,
+    ByteSize: BYTE,
+    Parity: BYTE,
+    StopBits: BYTE,
     XonChar: u8,
     XoffChar: u8,
     ErrorChar: u8,
     EofChar: u8,
     EvtChar: u8,
-    wReserved1: std.os.windows.WORD,
+    wReserved1: WORD,
 };
 
-extern "kernel32" fn GetCommState(hFile: std.os.windows.HANDLE, lpDCB: *DCB) callconv(std.os.windows.WINAPI) std.os.windows.BOOL;
-extern "kernel32" fn SetCommState(hFile: std.os.windows.HANDLE, lpDCB: *DCB) callconv(std.os.windows.WINAPI) std.os.windows.BOOL;
+const COMMTIMEOUTS = extern struct {
+    ReadIntervalTimeout: DWORD = MAXDWORD,
+    ReadTotalTimeoutMultiplier: DWORD = 0,
+    ReadTotalTimeoutConstant: DWORD = 0,
+    WriteTotalTimeoutMultiplier: DWORD = 0,
+    WriteTotalTimeoutConstant: DWORD = 0,
+
+    pub fn init(timeout: u32) COMMTIMEOUTS {
+        // This mimics the default behavior of posix systems.
+        if (timeout == 0 ) return .{};
+        // This is the god awful way windows does things. Waits until data is available, or timeout.
+        // Practically, this means it waits until either the supplied buffer is full or timeout occures.
+        return .{
+            .ReadTotalTimeoutMultiplier = MAXDWORD,
+            .ReadTotalTimeoutConstant = timeout,
+        };
+    }
+};
+
+extern "kernel32" fn GetCommState(hFile: HANDLE, lpDCB: *DCB) callconv(WINAPI) BOOL;
+extern "kernel32" fn SetCommState(hFile: HANDLE, lpDCB: *DCB) callconv(WINAPI) BOOL;
+extern "kernel32" fn SetCommTimeouts(in_hFile: HANDLE, in_lpCommTimeouts: *COMMTIMEOUTS) callconv(WINAPI) BOOL;

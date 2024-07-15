@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const c = @cImport(@cInclude("termios.h"));
+const MAXDWORD = std.math.maxInt(std.os.windows.DWORD);
 
 pub fn list() !PortIterator {
     return try PortIterator.init();
@@ -633,6 +634,9 @@ pub const SerialConfig = struct {
 
     /// Defines the handshake protocol used.
     handshake: Handshake = .none,
+
+    /// Timeout in milliseconds. Only used on windows.
+    timeout: u32 = 0,
 };
 
 const CBAUD = 0o000000010017; //Baud speed mask (not in POSIX).
@@ -692,6 +696,9 @@ pub fn configureSerialPort(port: std.fs.File, config: SerialConfig) !void {
             dcb.wReserved1 = 0;
 
             if (SetCommState(port.handle, &dcb) == 0)
+                return error.WindowsError;
+            var timeout = COMMTIMEOUTS.init(config.timeout);
+            if (SetCommTimeouts(port.handle, &timeout) == 0)
                 return error.WindowsError;
         },
         .linux, .macos => |tag| {
@@ -999,8 +1006,28 @@ const DCB = extern struct {
     wReserved1: std.os.windows.WORD,
 };
 
+const COMMTIMEOUTS = extern struct {
+    ReadIntervalTimeout: std.os.windows.DWORD = MAXDWORD,
+    ReadTotalTimeoutMultiplier: std.os.windows.DWORD = 0,
+    ReadTotalTimeoutConstant: std.os.windows.DWORD = 0,
+    WriteTotalTimeoutMultiplier: std.os.windows.DWORD = 0,
+    WriteTotalTimeoutConstant: std.os.windows.DWORD = 0,
+
+    pub fn init(timeout: u32) COMMTIMEOUTS {
+        // This mimics the default behavior of posix systems.
+        if (timeout == 0 ) return .{};
+        // This is the god awful way windows does things. Waits until data is available, or timeout.
+        // Practically, this means it waits until either the supplied buffer is full or timeout occures.
+        return .{
+            .ReadTotalTimeoutMultiplier = MAXDWORD,
+            .ReadTotalTimeoutConstant = timeout,
+        };
+    }
+};
+
 extern "kernel32" fn GetCommState(hFile: std.os.windows.HANDLE, lpDCB: *DCB) callconv(std.os.windows.WINAPI) std.os.windows.BOOL;
 extern "kernel32" fn SetCommState(hFile: std.os.windows.HANDLE, lpDCB: *DCB) callconv(std.os.windows.WINAPI) std.os.windows.BOOL;
+extern "kernel32" fn SetCommTimeouts(in_hFile: std.os.windows.HANDLE, in_lpCommTimeouts: *COMMTIMEOUTS) callconv(std.os.windows.WINAPI) std.os.windows.BOOL;
 
 test "iterate ports" {
     var it = try list();

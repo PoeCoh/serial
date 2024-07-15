@@ -610,11 +610,14 @@ pub const Handshake = enum {
     hardware,
 };
 
-pub const WordSize = enum {
-    five,
-    six,
-    seven,
-    eight,
+pub const WordSize = switch (builtin.os.tag) {
+    .windows => enum(u8) {
+        CS5 = 5,
+        CS6 = 6,
+        CS7 = 7,
+        CS8 = 8,
+    },
+    else => std.posix.CSIZE,
 };
 
 pub const SerialConfig = struct {
@@ -629,8 +632,7 @@ pub const SerialConfig = struct {
     stop_bits: StopBits = .one,
 
     /// Number of data bits per word.
-    /// Allowed values are 5, 6, 7, 8
-    word_size: WordSize = .eight,
+    word_size: WordSize = .CS8,
 
     /// Defines the handshake protocol used.
     handshake: Handshake = .none,
@@ -674,12 +676,7 @@ pub fn configureSerialPort(port: std.fs.File, config: SerialConfig) !void {
             });
 
             dcb.wReserved = 0;
-            dcb.ByteSize = switch (config.word_size) {
-                .five => @as(u8, 5),
-                .six => @as(u8, 6),
-                .seven => @as(u8, 7),
-                .eight => @as(u8, 8),
-            };
+            dcb.ByteSize = @intFromEnum(config.word_size);
             dcb.Parity = switch (config.parity) {
                 .none => @as(u8, 0),
                 .even => @as(u8, 2),
@@ -742,12 +739,7 @@ pub fn configureSerialPort(port: std.fs.File, config: SerialConfig) !void {
                 .two => settings.cflag.CSTOPB = true,
             }
 
-            switch (config.word_size) {
-                .five => settings.cflag.CSIZE = .CS5,
-                .six => settings.cflag.CSIZE = .CS6,
-                .seven => settings.cflag.CSIZE = .CS7,
-                .eight => settings.cflag.CSIZE = .CS8,
-            }
+            settings.cflag.CSIZE = config.word_size;
 
             const baud: std.posix.speed_t = @enumFromInt(config.baud_rate);
 

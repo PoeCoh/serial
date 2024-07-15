@@ -12,14 +12,14 @@ test "com0com loopback" {
         .handshake = .none,
         .parity = .none,
         .stop_bits = .one,
-        .word_size = .eight,
+        .word_size = .CS8,
     });
     try serial.configureSerialPort(sp2, .{
         .baud_rate = 115200,
         .handshake = .none,
         .parity = .none,
         .stop_bits = .one,
-        .word_size = .eight,
+        .word_size = .CS8,
     });
 
     serial.flushSerialPort(sp1, true, true) catch {};

@@ -14,7 +14,7 @@ pub fn list_info() !InformationIterator {
 pub const PortIterator = switch (builtin.os.tag) {
     .windows => WindowsPortIterator,
     .linux => LinuxPortIterator,
-    .macos => DarwinPortIterator,
+    .macos => @import("darwin/Iterator.zig"),
     else => @compileError("OS is not supported for port iteration"),
 };
 
@@ -520,59 +520,6 @@ const LinuxPortIterator = struct {
                     .display_name = path,
                     .driver = std.fs.path.basename(link),
                 };
-            } else {
-                return null;
-            }
-        }
-        return null;
-    }
-};
-
-const DarwinPortIterator = struct {
-    const Self = @This();
-
-    const root_dir = "/dev/";
-
-    dir: std.fs.Dir,
-    iterator: std.fs.Dir.Iterator,
-
-    full_path_buffer: [std.fs.max_path_bytes]u8 = undefined,
-    driver_path_buffer: [std.fs.max_path_bytes]u8 = undefined,
-
-    pub fn init() !Self {
-        var dir = try std.fs.cwd().openDir(root_dir, .{ .iterate = true });
-        errdefer dir.close();
-
-        return Self{
-            .dir = dir,
-            .iterator = dir.iterate(),
-        };
-    }
-
-    pub fn deinit(self: *Self) void {
-        self.dir.close();
-        self.* = undefined;
-    }
-
-    pub fn next(self: *Self) !?SerialPortDescription {
-        while (true) {
-            if (try self.iterator.next()) |entry| {
-                if (!std.mem.startsWith(u8, entry.name, "cu.")) {
-                    continue;
-                } else {
-                    var fba = std.heap.FixedBufferAllocator.init(&self.full_path_buffer);
-
-                    const path = try std.fs.path.join(fba.allocator(), &.{
-                        "/dev/",
-                        entry.name,
-                    });
-
-                    return SerialPortDescription{
-                        .file_name = path,
-                        .display_name = path,
-                        .driver = "darwin",
-                    };
-                }
             } else {
                 return null;
             }

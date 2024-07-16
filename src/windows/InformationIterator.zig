@@ -99,6 +99,14 @@ const PortInformation = @import("../serial.zig").PortInformation;
 const HDEVINFO = std.os.windows.HANDLE;
 const HWND = std.os.windows.HANDLE;
 const DEVINST = std.os.windows.DWORD;
+const HKEY = std.os.windows.HKEY;
+
+const SP_DEVINFO_DATA = extern struct {
+    cbSize: std.os.windows.DWORD,
+    classGuid: std.os.windows.GUID,
+    devInst: std.os.windows.DWORD,
+    reserved: std.os.windows.ULONG_PTR,
+};
 
 const Property = enum(std.os.windows.DWORD) {
     SPDRP_DEVICEDESC = 0x00000000,
@@ -285,14 +293,6 @@ fn parseProductId(devid: []const u8) !u16 {
 
     return error.WindowsError;
 }
-const HKEY = std.os.windows.HKEY;
-const SP_DEVINFO_DATA = extern struct {
-    cbSize: std.os.windows.DWORD,
-    classGuid: std.os.windows.GUID,
-    devInst: std.os.windows.DWORD,
-    reserved: std.os.windows.ULONG_PTR,
-};
-
 
 extern "advapi32" fn RegQueryValueExA(
     hKey: HKEY,

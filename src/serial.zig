@@ -3,6 +3,19 @@ const builtin = @import("builtin");
 const c = @cImport(@cInclude("termios.h"));
 const MAXDWORD = std.math.maxInt(std.os.windows.DWORD);
 
+pub fn init(port_name: []const u8, config: SerialConfig) !std.fs.File {
+    const prefix = switch (builtin.os.tag) {
+        .windows => "\\\\.\\",
+        .macos, .tvos, .watchos, .ios => "/dev/",
+        else => "/dev/",
+    };
+    var buffer = [_]u8{0} ** std.fs.max_path_bytes;
+    const file_name = try std.fmt.bufPrint(&buffer, "{s}{s}", .{ prefix, port_name });
+    const file = try std.fs.cwd().openFile(file_name, .{ .mode = .read_write });
+    try configureSerialPort(file, config);
+    return file;
+}
+
 pub fn list() !PortIterator {
     return try PortIterator.init();
 }
@@ -623,7 +636,7 @@ pub const WordSize = switch (builtin.os.tag) {
 pub const SerialConfig = struct {
     /// Symbol rate in bits/second. Not that these
     /// include also parity and stop bits.
-    baud_rate: u32,
+    baud_rate: u32 = 115200,
 
     /// Parity to verify transport integrity.
     parity: Parity = .none,
@@ -962,14 +975,14 @@ test "basic configuration test" {
         .handshake = .none,
         .baud_rate = 115200,
         .parity = .none,
-        .word_size = .eight,
+        .word_size = .CS8,
         .stop_bits = .one,
     };
 
     var tty: []const u8 = undefined;
 
     switch (builtin.os.tag) {
-        .windows => tty = "\\\\.\\COM3",
+        .windows => tty = "\\\\.\\COM10",
         .linux => tty = "/dev/ttyUSB0",
         .macos => tty = "/dev/cu.usbmodem101",
         else => unreachable,
@@ -985,7 +998,7 @@ test "basic flush test" {
     var tty: []const u8 = undefined;
     // if any, these will likely exist on a machine
     switch (builtin.os.tag) {
-        .windows => tty = "\\\\.\\COM3",
+        .windows => tty = "\\\\.\\COM10",
         .linux => tty = "/dev/ttyUSB0",
         .macos => tty = "/dev/cu.usbmodem101",
         else => unreachable,

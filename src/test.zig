@@ -1,10 +1,11 @@
 const std = @import("std");
 const serial = @import("serial.zig");
+const builtin = @import("builtin");
 
 test "com0com loopback" {
-    var sp1 = try std.fs.cwd().openFile("\\\\.\\COM10", .{ .mode = .read_write });
+    var sp1 = try serial.init("COM10", .{});
     defer sp1.close();
-    var sp2 = try std.fs.cwd().openFile("\\\\.\\COM11", .{ .mode = .read_write });
+    var sp2 = try serial.init("COM11", .{});
     defer sp2.close();
 
     try serial.configureSerialPort(sp1, .{
@@ -22,8 +23,8 @@ test "com0com loopback" {
         .word_size = .CS8,
     });
 
-    serial.flushSerialPort(sp1, true, true) catch {};
-    serial.flushSerialPort(sp2, true, true) catch {};
+    try serial.flushSerialPort(sp1, true, true);
+    try serial.flushSerialPort(sp2, true, true);
     const hello = "hello";
     _ = try sp1.write(hello);
     var buf = [_]u8{0} ** 100;

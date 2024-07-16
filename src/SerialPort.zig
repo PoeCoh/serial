@@ -9,5 +9,5 @@ const native_os = @import("builtin").os.tag;
 
 const Iterator = switch (native_os) {
     .macosx, .ios, .watchos, .tvos => @import("darwin/Iterator.zig"),
-    else => @compileError("Unsupported OS"),
+    else => @import("linux/Iterator.zig"),
 };

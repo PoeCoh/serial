@@ -1,30 +1,46 @@
 const std = @import("std");
-const serial = @import("serial.zig");
+const SerialPort = @import("SerialPort.zig");
 const builtin = @import("builtin");
 
+test "iterator" {
+    var iterator = SerialPort.iterator();
+    while (try iterator.next()) |port| {
+        _ = port;
+    }
+}
+
+test "configuration" {
+    var iterator = SerialPort.iterator();
+    var port_info: SerialPort = undefined;
+    while (try iterator.next()) |port| {
+        port_info = port;
+        break;
+    }
+    const name = port_info.file;
+    var sp = try SerialPort.init(name, .{});
+    defer sp.deinit();
+}
+
+test "control pins" {
+    var iterator = SerialPort.iterator();
+    var port_info: SerialPort = undefined;
+    // get first port
+    while (try iterator.next()) |port| {
+        port_info = port;
+        break;
+    }
+    const name = port_info.file;
+    var sp = try SerialPort.init(name, .{});
+    defer sp.deinit();
+    _ = sp.controlPins;
+}
+
 test "com0com loopback" {
-    var sp1 = try serial.init("COM10", .{});
-    defer sp1.close();
-    var sp2 = try serial.init("COM11", .{});
-    defer sp2.close();
-
-    try serial.configureSerialPort(sp1, .{
-        .baud_rate = 115200,
-        .handshake = .none,
-        .parity = .none,
-        .stop_bits = .one,
-        .word_size = .CS8,
-    });
-    try serial.configureSerialPort(sp2, .{
-        .baud_rate = 115200,
-        .handshake = .none,
-        .parity = .none,
-        .stop_bits = .one,
-        .word_size = .CS8,
-    });
-
-    try serial.flushSerialPort(sp1, true, true);
-    try serial.flushSerialPort(sp2, true, true);
+    var sp1 = try SerialPort.init("COM10", .{});
+    defer sp1.deinit();
+    var sp2 = try SerialPort.init("COM11", .{});
+    defer sp2.deinit();
+    try sp1.flush(.both);
     const hello = "hello";
     _ = try sp1.write(hello);
     var buf = [_]u8{0} ** 100;

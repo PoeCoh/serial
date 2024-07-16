@@ -1,4 +1,5 @@
 const std = @import("std");
+const serial = @import("../serial.zig");
 const c = @cImport(@cInclude("termios.h"));
 
 pub fn pflush(file: std.fs.File, buffers: Buffers) !void {
@@ -16,3 +17,7 @@ pub const Buffers = enum {
     output,
     both,
 };
+
+pub fn controlPins(file: std.fs.File, pins: serial.ControlPins) !void {
+    std.debug.print("control pins: {any}{any}\n", .{pins, file});
+}

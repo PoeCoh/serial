@@ -230,73 +230,10 @@ pub fn configureSerialPort(port: std.fs.File, config: SerialConfig) !void {
     }
 }
 
-/// Flushes the serial port `port`. If `input` is set, all pending data in
-/// the receive buffer is flushed, if `output` is set all pending data in
-/// the send buffer is flushed.
-
-
 pub const ControlPins = struct {
     rts: ?bool = null,
     dtr: ?bool = null,
 };
-
-pub fn changeControlPins(port: std.fs.File, pins: ControlPins) !void {
-    switch (builtin.os.tag) {
-        .windows => {
-            const CLRDTR = 6;
-            const CLRRTS = 4;
-            const SETDTR = 5;
-            const SETRTS = 3;
-
-            if (pins.dtr) |dtr| {
-                if (EscapeCommFunction(port.handle, if (dtr) SETDTR else CLRDTR) == 0)
-                    return error.WindowsError;
-            }
-            if (pins.rts) |rts| {
-                if (EscapeCommFunction(port.handle, if (rts) SETRTS else CLRRTS) == 0)
-                    return error.WindowsError;
-            }
-        },
-        .linux => {
-            const TIOCM_RTS: c_int = 0x004;
-            const TIOCM_DTR: c_int = 0x002;
-
-            // from /usr/include/asm-generic/ioctls.h
-            // const TIOCMBIS: u32 = 0x5416;
-            // const TIOCMBIC: u32 = 0x5417;
-            const TIOCMGET: u32 = 0x5415;
-            const TIOCMSET: u32 = 0x5418;
-
-            var flags: c_int = 0;
-            if (std.os.linux.ioctl(port.handle, TIOCMGET, @intFromPtr(&flags)) != 0)
-                return error.Unexpected;
-
-            if (pins.dtr) |dtr| {
-                if (dtr) {
-                    flags |= TIOCM_DTR;
-                } else {
-                    flags &= ~TIOCM_DTR;
-                }
-            }
-            if (pins.rts) |rts| {
-                if (rts) {
-                    flags |= TIOCM_RTS;
-                } else {
-                    flags &= ~TIOCM_RTS;
-                }
-            }
-
-            if (std.os.linux.ioctl(port.handle, TIOCMSET, @intFromPtr(&flags)) != 0)
-                return error.Unexpected;
-        },
-
-        .macos => {},
-
-        else => @compileError("changeControlPins not implemented for " ++ @tagName(builtin.os.tag)),
-    }
-}
-
-extern "kernel32" fn EscapeCommFunction(hFile: std.os.windows.HANDLE, dwFunc: std.os.windows.DWORD) callconv(std.os.windows.WINAPI) std.os.windows.BOOL;
 
 const DCBFlags = packed struct(u32) {
     fBinary: bool = true, // u1
@@ -409,5 +346,5 @@ test "basic flush test" {
 }
 
 test "change control pins" {
-    _ = changeControlPins;
+    _ = serial.controlPins;
 }

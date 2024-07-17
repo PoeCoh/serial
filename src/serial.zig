@@ -76,6 +76,9 @@ pub const Config = struct {
 
     /// Defines the handshake protocol used.
     handshake: Handshake = .none,
+
+    /// Timeout in milliseconds for read operations.
+    timeout: u32 = 0,
 };
 
 pub const ControlPins = struct {
@@ -114,10 +117,10 @@ pub fn configure(file: std.fs.File, config: Config) !void {
     settings.ispeed = @intFromEnum(config.baud_rate);
     settings.ospeed = @intFromEnum(config.baud_rate);
 
-    settings.cc[VMIN] = 1;
+    settings.cc[VMIN] = if (config.timeout == 0) 0 else 1;
     settings.cc[VSTOP] = 0x13; // XOFF
     settings.cc[VSTART] = 0x11; // XON
-    settings.cc[VTIME] = 0;
+    settings.cc[VTIME] = config.timeout;
 
     try std.posix.tcsetattr(file.handle, .NOW, settings);
 }

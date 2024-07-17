@@ -88,6 +88,13 @@ fn configure(file: std.fs.File, config: serial.Config) !void {
 
     if (SetCommState(file.handle, &dcb) == 0)
         return error.WindowsError;
+    var timeouts = COMMTIMEOUTS{};
+    if (config.timeout > 0) {
+        timeouts.ReadTotalTimeoutMultiplier = std.math.maxInt(DWORD);
+        timeouts.ReadTotalTimeoutConstant = config.timeout;
+    }
+    if (SetCommTimeouts(file.handle, &timeouts) == 0)
+        return error.WindowsError;
 }
 
 const DCBFlags = packed struct(u32) {
@@ -128,7 +135,16 @@ const DCB = extern struct {
     wReserved1: WORD,
 };
 
+const COMMTIMEOUTS = extern struct {
+    ReadIntervalTimeout: DWORD = std.math.maxInt(DWORD),
+    ReadTotalTimeoutMultiplier: DWORD = 0,
+    ReadTotalTimeoutConstant: DWORD = 0,
+    WriteTotalTimeoutMultiplier: DWORD = 0,
+    WriteTotalTimeoutConstant: DWORD = 0,
+};
+
 extern "kernel32" fn GetCommState(hFile: HANDLE, lpDCB: *DCB) callconv(WINAPI) BOOL;
 extern "kernel32" fn SetCommState(hFile: HANDLE, lpDCB: *DCB) callconv(WINAPI) BOOL;
 extern "kernel32" fn PurgeComm(hFile: HANDLE, dwFlags: DWORD) callconv(WINAPI) BOOL;
 extern "kernel32" fn EscapeCommFunction(hFile: HANDLE, dwFunc: DWORD) callconv(WINAPI) BOOL;
+extern "kernel32" fn SetCommTimeouts(in_hFile: HANDLE, in_lpCommTimeouts: *COMMTIMEOUTS) callconv(WINAPI) BOOL;
